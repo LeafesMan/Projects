@@ -1,0 +1,15 @@
+#!/bin/bash
+s="mcServer"
+tmux has-session -t mcServer 2>/dev/null
+if [ $? = 0 ]; then
+	echo "[MC-SERVER] Server is active"
+else
+	echo "[MC-SERVER] Server is inactive"
+fi
+
+tmux has-session -t mcManager 2>/dev/null
+if [ $? = 0 ]; then
+	echo "[MC-SERVER] Manager is active"
+else
+	echo "[MC-SERVER] Manager is inactive"
+fi

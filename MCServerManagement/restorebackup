@@ -1,0 +1,11 @@
+#!/bin/bash
+
+#only runs if param is not empty
+#saves world to backup and removes old saved world
+#replaces world with param backup passed in
+if [ $1 != "" ]; then
+rm -rf ./backups/replacedByBackup
+mv ./world ./backups/replacedByBackup &&
+cp -r ./backups/$1 ./world
+echo "[MC-SERVER] Backup Restored!"
+fi

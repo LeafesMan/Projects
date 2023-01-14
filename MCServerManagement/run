@@ -1,0 +1,5 @@
+#!/bin/bash
+
+echo "[MC-SERVER] Server Booting..."
+tmux new -d -As mcServer java -Xmx2048M -Xms1024M -jar server.jar nogui
+echo "[MC-SERVER] Server Booted!"

@@ -1,0 +1,3 @@
+#!/bin/bash
+
+tmux send-keys -t mcServer "say §$2$1" Enter

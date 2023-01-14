@@ -1,0 +1,5 @@
+#!/bin/bash
+
+tmux send-keys -t mcServer "stop" Enter
+tmux kill-session -t mcManager
+echo "[MC-SERVER] Server Killed!"

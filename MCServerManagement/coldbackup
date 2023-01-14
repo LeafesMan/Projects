@@ -1,0 +1,21 @@
+#!/bin/bash
+
+
+#Shutown Server
+tmux send-keys -t mcServer "save-all" Enter
+tmux send-keys -t mcServer "stop" Enter
+
+
+#Waits for Server Window to be closed
+#(Closes when server dies)
+while [ $? = 0 ]
+do
+tmux has-session -t mcServer 2>/dev/null
+done
+
+#Save world file
+filename=$(date "+%H:%M_%m-%d-%Y")
+cp -r world ./backups/$filename
+
+#Start Server
+source ./run

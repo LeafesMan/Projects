@@ -1,0 +1,5 @@
+#!/bin/bash
+
+./run
+tmux new -d -As mcManager java ServerManager
+echo "[MC-SERVER] Server Manager Booted!"
