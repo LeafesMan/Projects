@@ -1,47 +1,63 @@
-////////////////////////////////////
-//
-//  Author: Ian
-//
-//  Project: The Wall
-//  
-//  Date: 12/15/22
-//       Audio handler script will listen for audio event calls
-//       and play audio based on the VaribaleAudioClip passed in
-//  Date: 1/6/23
-//      Now uses audio source pooling & supports positional audio
-// 
-////////////////////////////////////
+/*
+ *  Name: Ian
+ *
+ *  Proj: Audio Library
+ *
+ *  Date: 7/26/23 
+ *  
+ *  Desc: Static script for playing & pooling audio
+ */
+
 using UnityEngine;
 using System.Collections.Generic;
 
-public class AudioHandler : MonoBehaviour
+public static class AudioHandler
 {
-    [SerializeField] private int audioPoolSize;
-    [SerializeField] private EventHandler e;
+    [SerializeField] private static int audioPoolSize;
+    private static Transform audioSources;
 
-    private List<AudioSource> freeAudioSources = new List<AudioSource>();
-    private List<(AudioSource source, float timeStamp)> busyAudioSources = new List<(AudioSource source, float timeStamp)>();
-    private Transform audioSourcePool;
 
-    //Subscribe and Unsubscribe
-    private void OnEnable() => e.audioEvent += Play;
-    private void OnDisable() => e.audioEvent -= Play;
+    //Lists of standard Audio sources
+    private static List<AudioSource> freeAudioSources = new List<AudioSource>();
+    private static List<(AudioSource source, float timeStamp)> busyAudioSources = new List<(AudioSource source, float timeStamp)>();
 
-    private void Start()
-    {
-        audioSourcePool = new GameObject("Audio Source Pool").transform;
-        audioSourcePool.SetParent(transform);
-    }
-    public void Play(Audio audio, Vector2 position)
+    //Lists of Positional AudioSources
+    private static List<AudioSource> freePositionalAudioSources = new List<AudioSource>();
+    private static List<(AudioSource source, float timeStamp)> busyPositionalAudioSources = new List<(AudioSource source, float timeStamp)>();
+
+
+
+    /// <summary>
+    /// Plays positional Audio
+    /// </summary>
+    public static void Play(AudioClip clip, float volume, float pitch, Vector2 position)
     {   //Get Clip and Audio source
-        VariableAudioClip clip = audio.GetClip();
-        AudioSource source = GetAudioSource();
+        AudioSource source = GetAudioSource(freePositionalAudioSources, busyPositionalAudioSources, true);
 
         //Setup audio source
         source.transform.position = position;
-        source.volume = clip.GetVolume();
-        source.pitch = clip.GetPitch();
-        source.clip = clip.clip;
+        source.volume = volume;
+        source.pitch = pitch;
+        source.clip = clip;
+
+        //Play sound
+        source.Play();
+
+        //Add source to used audio sources
+        busyPositionalAudioSources.Add((source, Time.time));
+    }
+    /// <summary>
+    /// Plays Audio
+    /// </summary>
+    public static void Play(AudioClip clip, float volume, float pitch)
+    {
+        //Get Clip and Audio source
+        AudioSource source = GetAudioSource(freeAudioSources, busyAudioSources, false);
+
+        //Setup audio source
+        source.volume = volume;
+        source.pitch = pitch;
+        source.clip = clip;
 
         //Play sound
         source.Play();
@@ -50,12 +66,16 @@ public class AudioHandler : MonoBehaviour
         busyAudioSources.Add((source, Time.time));
     }
 
-    public AudioSource GetAudioSource()
+    public static AudioSource GetAudioSource(List<AudioSource> freeAudioSources, List<(AudioSource source, float timeStamp)> busyAudioSources, bool isPositional)
     {   // Gets an audio source and places it in the used list
         // Uses free sources when possible
         // When there are no free sources creates a new one
         // OR   uses the oldest used source if the pool is full
-        RefreshAudioSources();
+
+        if(audioSources == null) audioSources = new GameObject("Audio Sources").transform; //Lazy Create AudioSources Object
+
+        RefreshAudioSources(freeAudioSources, busyAudioSources); //Frees up Audio Sources that are done
+
         AudioSource source;
         if (freeAudioSources.Count != 0) //If available use one
         {
@@ -68,19 +88,24 @@ public class AudioHandler : MonoBehaviour
             busyAudioSources.RemoveAt(0);
         }
         else //No source available and pool not full
-            source = CreateAudioSource();
-        return source;
-    }
-    public AudioSource CreateAudioSource()
-    {   // Creates an audio source object
-        AudioSource source = new GameObject("Positional Audio Source").AddComponent<AudioSource>();
-        source.spatialBlend = 1;
-        source.transform.SetParent(audioSourcePool.transform);
+            source = isPositional ? CreatePositionalAudioSource() : CreateAudioSource();
         return source;
     }
 
-    public void RefreshAudioSources()
-    {   // Moves all completed audio sources in the busy list to the free list
+    public static AudioSource CreateAudioSource() => audioSources.gameObject.AddComponent<AudioSource>();
+    public static AudioSource CreatePositionalAudioSource()
+    {   // Creates an audio source object
+        AudioSource source = new GameObject("Positional Audio Source").AddComponent<AudioSource>();
+        source.spatialBlend = 1;
+        source.transform.SetParent(audioSources.transform);
+        return source;
+    }
+
+    /// <summary>
+    /// Moves all completed audio sources in the busy list to the free list
+    /// </summary>
+    public static void RefreshAudioSources(List<AudioSource> freeAudioSources, List<(AudioSource source, float timeStamp)> busyAudioSources)
+    {   
         for (int i = busyAudioSources.Count - 1; i >= 0; i--)
             if (busyAudioSources[i].source.clip.length <= Time.time - busyAudioSources[i].timeStamp) // If busy audio source has finished
             {
