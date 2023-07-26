@@ -12,9 +12,12 @@
 using UnityEngine;
 
 [CreateAssetMenu(menuName = "Audio/Multi Clip", fileName = "MA_NewMultiAudioClip")]
-public class MultiAudioClip : Audio
+public class MultiAudioClip : ScriptableObject, IPlayableClip
 {
     public VariableAudioClip[] clips;
-    public override VariableAudioClip GetClip() => clips[Random.Range(0, clips.Length)];
-    public void TestClip() => GetClip().TestClip();
+    public VariableAudioClip GetRandClip() => clips[Random.Range(0, clips.Length)];
+    public void TestClip() => GetRandClip().TestClip();
+    public void Play() => GetRandClip().Play();
+    public void Play(Vector3 pos) => GetRandClip().Play(pos);
+
 }
