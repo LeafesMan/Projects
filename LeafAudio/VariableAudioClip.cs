@@ -1,26 +1,24 @@
-////////////////////////////////////
-//
-//  Author: Ian
-//
-//  Project: The Wall
-//  
-//  Date: 12/15/22
-//       A variable audio clip is the data structure for a single clip.
-//       Contains ranges for volume, pitch, and zzzt 
-// 
-////////////////////////////////////
+/*
+ *  Name: Ian
+ *
+ *  Proj: Audio Library
+ *
+ *  Date: 7/27/23 
+ *  
+ *  Desc: A variable audio clip is the data structure for a single clip. Contains ranges for volume and pitch.
+ */
 using UnityEngine;
 
 [CreateAssetMenu(menuName = "Audio/Variable Clip", fileName = "VA_NewVariableClip")]
-public class VariableAudioClip : ScriptableObject, IPlayableClip
+public class VariableAudioClip : PlayableClip
 {
     public AudioClip clip;
 
-    [Range(0.01f, 1)] public float minVol, maxVol;
-    [Range(0.01f, 3)] public float minPitch, maxPitch;
-    public float GetRandVolume() => Random.Range(minVol, maxVol);
-    public float GetRandPitch() => Random.Range(minPitch, maxPitch);
-    public void TestClip()
+    [SerializeField,Slider(0, 1)] private Vector2 volumeRange;
+    [SerializeField,Slider(0, 3)] private Vector2 pitchRange;
+    private float GetRandVolume() => Random.Range(volumeRange.x, volumeRange.y);
+    private float GetRandPitch() => Random.Range(pitchRange.x, pitchRange.y);
+    public override void Test()
     {
         AudioSource source = GameObject.Find("Main Camera").GetComponent<AudioSource>();
         source.clip = clip;
@@ -29,7 +27,6 @@ public class VariableAudioClip : ScriptableObject, IPlayableClip
         source.Play();
     }
 
-    public void Play() => AudioHandler.Play(clip, GetRandVolume(), GetRandPitch());
-
-    public void Play(Vector3 pos) => AudioHandler.Play(clip, GetRandVolume(), GetRandPitch(), pos);
+    public override void Play() => AudioHandler.PlayClipDelegate?.Invoke(clip, GetRandVolume(), GetRandPitch());
+    public override void Play(Vector3 pos) => AudioHandler.PlayPositionalClipDelegate?.Invoke(clip, GetRandVolume(), GetRandPitch(), pos);
 }
