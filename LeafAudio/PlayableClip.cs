@@ -9,8 +9,9 @@
  */
 
 using UnityEngine;
-public interface IPlayableClip
+public abstract class PlayableClip : ScriptableObject
 {
-	public void Play();
-	public void Play(Vector3 pos);
+	public abstract void Play();
+	public abstract void Play(Vector3 pos);
+	public abstract void Test();
 }
