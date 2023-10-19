@@ -31,28 +31,33 @@ public class AudioHandler : MonoBehaviour
 
 
     //Static Events
-    public static Action<AudioClip, float, float> PlayClipDelegate;
-    public static Action<AudioClip, float, float, Vector2> PlayPositionalClipDelegate;
-    public static Action<AudioClip, float, int> FadeClipDelegate;
+    public delegate void ClipPlayer(AudioClip clip, float volume, float pitch);
+    public static ClipPlayer PlayClip;
+
+    public delegate void PositionalClipPlayer(AudioClip clip, float volume, float pitch, Vector3 position);
+    public static PositionalClipPlayer PlayClipPositional;
+
+    public delegate void FadedClipPlayer(AudioClip clip, float fadeInTime, int slot);
+    public static FadedClipPlayer PlayClipFaded;
 
 
     private void OnEnable()
     {
-        PlayClipDelegate += Play;
-        PlayPositionalClipDelegate+= Play;
-        FadeClipDelegate += FadeIn;
+        PlayClip += Play;
+        PlayClipPositional += Play;
+        PlayClipFaded += FadeIn;
     }
     private void OnDisable()
     {
-        PlayClipDelegate -= Play;
-        PlayPositionalClipDelegate -= Play;
-        FadeClipDelegate -= FadeIn;
+        PlayClip -= Play;
+        PlayClipPositional -= Play;
+        PlayClipFaded -= FadeIn;
     }
 
     /// <summary>
     /// Plays positional Audio
     /// </summary>
-    public void Play(AudioClip clip, float volume, float pitch, Vector2 position)
+    public void Play(AudioClip clip, float volume, float pitch, Vector3 position)
     {   //Get Clip and Audio source
         AudioSource source = GetAudioSource(freePositionalAudioSources, busyPositionalAudioSources, true);
 
