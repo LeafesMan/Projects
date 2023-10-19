@@ -12,13 +12,13 @@ using UnityEditor;
 using UnityEngine;
 
 
-[CustomEditor(typeof(PlayableClip), true)]
+[CustomEditor(typeof(IPlayableClip), true)]
 public class PlayableClipEditor : Editor
 {
     public override void OnInspectorGUI()
     {
         base.OnInspectorGUI();
-        PlayableClip playableClipScript = (PlayableClip)target;
+        IPlayableClip playableClipScript = (IPlayableClip)target;
 
         //Test Clip Button
         if (GUILayout.Button("Test Audio"))
@@ -28,4 +28,3 @@ public class PlayableClipEditor : Editor
         }
     }
 }
-
