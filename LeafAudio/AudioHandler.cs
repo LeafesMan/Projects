@@ -5,173 +5,238 @@
  *
  *  Date: 7/26/23 
  *  
- *  Desc: Static script for playing & pooling audio
+ *  Desc: Script for playing & pooling audio.
+ *      Attach this component to one object in your scene to listen for and handle audio events.
  */
 
 using UnityEngine;
 using System.Collections.Generic;
 using System.Collections;
-using System;
+using UnityEngine.UIElements;
 
 public class AudioHandler : MonoBehaviour
 {
-    [SerializeField] private int audioPoolSize;
+    [SerializeField, Tooltip("NOT IMPLEMENTED")] bool persist;
+    [SerializeField, Tooltip("How many audio sources may be pooled.\nThis number has no bearing on looping audio sources.")] int poolSize;
 
-    //Lists of standard Audio sources
-    private static List<AudioSource> freeAudioSources = new List<AudioSource>();
-    private static List<(AudioSource source, float timeStamp)> busyAudioSources = new List<(AudioSource source, float timeStamp)>();
+    /// <summary>
+    /// Audio Source Pool. Sorted in ascending order by End Time
+    /// </summary>
+    List<PooledAudioSource> pool = new();
 
-    //Lists of Positional AudioSources
-    private static List<AudioSource> freePositionalAudioSources = new List<AudioSource>();
-    private static List<(AudioSource source, float timeStamp)> busyPositionalAudioSources = new List<(AudioSource source, float timeStamp)>();
-
-    //Fadeable Audio Sources
-    //Each Fadeable audio source element has two audio sources for fading in a new clip
-    private static List<(AudioSource, AudioSource)> fadeableAudioSourcePairs = new List<(AudioSource,AudioSource)>();
+    /// <summary>
+    /// Each Looping audio source element has two audio sources for fading in a new looping clip
+    /// </summary>
+    Dictionary<uint, (AudioSource, AudioSource)> loopingPool = new();
 
 
-    //Static Events
-    public delegate void ClipPlayer(AudioClip clip, float volume, float pitch);
-    public static ClipPlayer PlayClip;
 
-    public delegate void PositionalClipPlayer(AudioClip clip, float volume, float pitch, Vector3 position);
-    public static PositionalClipPlayer PlayClipPositional;
 
-    public delegate void FadedClipPlayer(AudioClip clip, float fadeInTime, int slot);
-    public static FadedClipPlayer PlayClipFaded;
+    // Static Events
+    public delegate void ClipHandler(ClipSpecs specs);
+    public static ClipHandler Play;
+
+    public delegate void PositionalClipHandler(ClipSpecs specs, Vector3 position);
+    public static PositionalClipHandler PlayPositional;
+
+    public delegate void ParentedClipHandler(ClipSpecs specs, Transform parent, Vector3 offset);
+    public static ParentedClipHandler PlayParented;
+
+    public delegate void LoopingClipHandler(ClipSpecs specs, float fadeInTime, uint slot);
+    public static LoopingClipHandler PlayLooping;
+
+
+    /// <summary>
+    /// Struct for data stored about every source in the pool.
+    /// </summary>
+    class PooledAudioSource
+    {
+        readonly AudioSource source;
+        public Transform parent;
+        public Vector3 position;
+        public float endTime;
+
+        public PooledAudioSource(AudioSource source) => this.source = source;
+
+        /// <summary>
+        /// Setups a pooled audio source with a new set of parameters
+        /// </summary>
+        public void Setup(ClipSpecs specs, float spatialBlend, Transform parent, Vector3 position)
+        {   // Audio Data
+            source.clip   = specs.clip;
+            source.volume = specs.volume;
+            source.pitch  = specs.pitch;
+            source.spatialBlend = spatialBlend;
+
+            // Transform Data
+            this.parent = parent;
+            this.position = position;
+
+            // End Time stamp based on clip length
+            endTime = specs.clip.length + Time.time;
+        }
+
+        /// <summary>
+        /// Plays the pooled audio source.
+        /// </summary>
+        public void Play() => source.Play();
+
+        /// <summary>
+        /// Whether the pooled audio source has finished its clip
+        /// </summary>
+        public bool IsAvailable => Time.time > endTime;
+        public void UpdatePosition()
+        {
+            if (parent == null) return;
+
+            // Set to parents position plus the offset
+            // * Position acts as offset when parented
+            source.transform.position = parent.position + position;
+        }
+    }
+
 
 
     private void OnEnable()
     {
-        PlayClip += Play;
-        PlayClipPositional += Play;
-        PlayClipFaded += FadeIn;
+        Play += PlayClip2D;
+        PlayPositional += PlayClipPositional;
+        PlayParented += PlayClipParented;
+        PlayLooping += PlayClipLooping;
     }
     private void OnDisable()
     {
-        PlayClip -= Play;
-        PlayClipPositional -= Play;
-        PlayClipFaded -= FadeIn;
+        Play -= PlayClip2D;
+        PlayPositional -= PlayClipPositional;
+        PlayParented -= PlayClipParented;
+        PlayLooping -= PlayClipLooping;
+    }
+    /// <summary>
+    /// Updates position of parented audio sources
+    /// </summary>
+    private void FixedUpdate()
+    {
+        foreach (PooledAudioSource pooledSource in pool)
+            pooledSource.UpdatePosition();
     }
 
+    /// <summary>
+    /// Plays a Clip with the given parameters
+    /// </summary>
+    public void PlayClip(ClipSpecs specs, float spatialBlend, Transform parent, Vector3 pos)
+    {   // Get Audio source
+        PooledAudioSource pooledSource = GetAudioSource();
+
+        // Setup audio source
+        pooledSource.Setup(specs, spatialBlend, parent, pos);
+
+        // Play Audio Source
+        pooledSource.Play();
+
+        // Add source to used audio sources
+        Sort(pooledSource);
+    }
+
+    /// <summary>
+    /// Plays 2D Audio
+    /// </summary>
+    public void PlayClip2D(ClipSpecs specs) => PlayClip(specs, 0, null, Vector3.zero);
     /// <summary>
     /// Plays positional Audio
     /// </summary>
-    public void Play(AudioClip clip, float volume, float pitch, Vector3 position)
-    {   //Get Clip and Audio source
-        AudioSource source = GetAudioSource(freePositionalAudioSources, busyPositionalAudioSources, true);
-
-        //Setup audio source
-        source.transform.position = position;
-        source.volume = volume;
-        source.pitch = pitch;
-        source.clip = clip;
-
-        //Play sound
-        source.Play();
-
-        //Add source to used audio sources
-        busyPositionalAudioSources.Add((source, Time.time));
-    }
+    public void PlayClipPositional(ClipSpecs specs, Vector3 position) => PlayClip(specs, 1, null, position);
     /// <summary>
-    /// Plays Audio
+    /// Plays a positional audio source parented to an object
     /// </summary>
-    public void Play(AudioClip clip, float volume, float pitch)
-    {
-        //Get Clip and Audio source
-        AudioSource source = GetAudioSource(freeAudioSources, busyAudioSources, false);
+    public void PlayClipParented(ClipSpecs specs, Transform parent, Vector3 offset) => PlayClip(specs, 1, parent, offset);
 
-        //Setup audio source
-        source.volume = volume;
-        source.pitch = pitch;
-        source.clip = clip;
 
-        //Play sound
-        source.Play();
+    /// <summary>
+    /// Plays Looping Audio
+    /// </summary>
+    public void PlayClipLooping(ClipSpecs specs, float fadeDuration, uint slot)
+    {   // If Audio Source pair hasnt been created for this slot create it
+        if (!loopingPool.ContainsKey(slot))
+        {
+            loopingPool.Add(slot, new (gameObject.AddComponent<AudioSource>(), gameObject.AddComponent<AudioSource>()));
+            loopingPool[slot].Item1.loop = true;
+            loopingPool[slot].Item2.loop = true;
+        }
 
-        //Add source to used audio sources
-        busyAudioSources.Add((source, Time.time));
+           
+
+        //Start fading out the faded in AudioSource
+        StartCoroutine(FadeVolume(loopingPool[slot].Item2, loopingPool[slot].Item2.volume, 0, fadeDuration));
+
+        //Fade in faded out Audio Source, replace it's clip with clip to fade in, and set volume to 0
+        loopingPool[slot].Item2.clip = specs.clip;
+        loopingPool[slot].Item2.pitch = specs.pitch;
+        StartCoroutine(FadeVolume(loopingPool[slot].Item2, 0, specs.volume, fadeDuration));
+
+        //Swap faded in AudioSource with the faded out AudioSource in the audioSourcePairs tuple
+        loopingPool[slot] = new(loopingPool[slot].Item2, loopingPool[slot].Item1);
     }
-    private AudioSource GetAudioSource(List<AudioSource> freeAudioSources, List<(AudioSource source, float timeStamp)> busyAudioSources, bool isPositional)
-    {   // Gets an audio source and places it in the used list
+
+    private PooledAudioSource GetAudioSource()
+    {   // Grabs a Pooled audio source to use for playing a sound
         // Uses free sources when possible
         // When there are no free sources creates a new one
         // OR   uses the oldest used source if the pool is full
+        PooledAudioSource toReturn;
 
-        RefreshAudioSources(freeAudioSources, busyAudioSources); //Frees up Audio Sources that are done
 
-        AudioSource source;
-        if (freeAudioSources.Count != 0) //If available use one
-        {
-            source = freeAudioSources[0];
-            freeAudioSources.RemoveAt(0);
-        }
-        else if (freeAudioSources.Count == 0 && busyAudioSources.Count == audioPoolSize) //If none available and full
-        {
-            source = busyAudioSources[0].source;
-            busyAudioSources.RemoveAt(0);
-        }
-        else //No source available and pool not full
-            source = isPositional ? CreatePositionalAudioSource() : CreateAudioSource();
-        return source;
-    }
-    private AudioSource CreateAudioSource() => gameObject.AddComponent<AudioSource>();
-    private AudioSource CreatePositionalAudioSource()
-    {   // Creates an audio source object
-        AudioSource source = new GameObject("Positional Audio Source").AddComponent<AudioSource>();
-        source.spatialBlend = 1;
-        source.transform.SetParent(transform);
-        return source;
-    }
-    /// <summary>
-    /// Moves all completed audio sources in the busy list to the free list
-    /// </summary>
-    private void RefreshAudioSources(List<AudioSource> freeAudioSources, List<(AudioSource source, float timeStamp)> busyAudioSources)
-    {   
-        for (int i = busyAudioSources.Count - 1; i >= 0; i--)
-            if (busyAudioSources[i].source.clip.length <= Time.time - busyAudioSources[i].timeStamp) // If busy audio source has finished
-            {
-                freeAudioSources.Add(busyAudioSources[i].source);
-                busyAudioSources.RemoveAt(i);
-            }
-    }
+        // Pool has Available Source --> Return it
+        if (pool.Count != 0 && pool[0].IsAvailable)
+            toReturn = pool[0];
+        // Pool Full --> Return Source that is closest to complete
+        else if (pool.Count == poolSize)
+            toReturn = pool[0];
+        // Pool Not Full --> Create new Source
+        else
+        {   // Create and  reparent an audio source
+            AudioSource audioSource = new GameObject("PooledAudioSource").AddComponent<AudioSource>();
+            audioSource.transform.SetParent(transform);
 
-    public void FadeIn(AudioClip clip, float fadeDuration, int fadeIndex)
-    {   //If slot has not been created create new Pairs of fadeable audio sources until slot is created
-        while (fadeableAudioSourcePairs.Count <= fadeIndex)
-        {
-            fadeableAudioSourcePairs.Add(new(gameObject.AddComponent<AudioSource>(), gameObject.AddComponent<AudioSource>()));
-            fadeableAudioSourcePairs[fadeIndex].Item1.loop = true;
-            fadeableAudioSourcePairs[fadeIndex].Item2.loop = true;
+            toReturn = new PooledAudioSource(audioSource);
         }
 
-        //Start fading out the faded in AudioSource
-        StartCoroutine(FadeVolume(fadeableAudioSourcePairs[fadeIndex].Item2, 0, fadeDuration));
-
-        //Fade in faded out Audio Source, replace it's clip with clip to fade in, and set volume to 0
-        fadeableAudioSourcePairs[fadeIndex].Item2.clip = clip;
-        fadeableAudioSourcePairs[fadeIndex].Item2.volume = 0;
-        StartCoroutine(FadeVolume(fadeableAudioSourcePairs[fadeIndex].Item2, 1, fadeDuration));
-
-        //Swap faded in AudioSource with the faded out AudioSource in the audioSourcePairs tuple
-        fadeableAudioSourcePairs[fadeIndex] = new(fadeableAudioSourcePairs[fadeIndex].Item2, fadeableAudioSourcePairs[fadeIndex].Item1);
+        return toReturn;
     }
+
+
 
     /// <summary>
     /// Fades volume from current value to targetVolume over duration.
     /// </summary>
-    private IEnumerator FadeVolume(AudioSource source, float targetVolume, float duration)
+    private IEnumerator FadeVolume(AudioSource source, float from, float to, float duration)
     {
-        float startVolume = source.volume;
         float startTime = Time.time;
 
         //Lerp from start Volume to target Volume over duration
         while(Time.time - startTime <= duration)
         {
-            source.volume = Mathf.Lerp(startVolume, targetVolume, (Time.time - startTime) / duration);
+            source.volume = Mathf.Lerp(from, to, (Time.time - startTime) / duration);
             yield return null;
         }
 
-        source.volume = targetVolume;
+        source.volume = to;
+    }
+
+
+    /// <summary>
+    /// Sorts the pool by ascending end time.<br></br>
+    /// ***Assumes the PooledSource passed in is the only one that has changed
+    /// </summary>
+    private void Sort(PooledAudioSource toInsert)
+    {
+        pool.Remove(toInsert);
+
+        // Find the
+        int i = 0;
+        for ( ; i < pool.Count; i++)
+            if (pool[i].endTime > toInsert.endTime)
+                return;
+
+        pool.Insert(i, toInsert);
     }
 }

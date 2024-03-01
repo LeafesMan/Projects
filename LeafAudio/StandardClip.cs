@@ -10,22 +10,12 @@
 
 using UnityEngine;
 
-public class StandardClip : ScriptableObject, IPlayableClip
+[CreateAssetMenu(menuName = "Audio/Standard Clip", fileName = "NewStandardClip")]
+public class StandardClip : PlayableClip
 {
     [SerializeField] AudioClip clip;
     [SerializeField] float volume;
     [SerializeField] float pitch;
 
-
-    public void Test()
-    {
-        AudioSource source = IPlayableClip.GetTestPlayer();
-        source.clip = clip;
-        source.volume = volume;
-        source.pitch = pitch;
-        source.Play();
-    }
-
-    public void Play() => AudioHandler.PlayClip(clip, volume, pitch);
-    public void Play(Vector3 pos) => AudioHandler.PlayClipPositional(clip, volume, pitch, pos);
+    public override ClipSpecs GetSpecs() => new ClipSpecs(clip, pitch, volume);
 }
